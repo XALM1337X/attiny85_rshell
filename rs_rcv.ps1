@@ -1,3 +1,6 @@
+#Import-Module .\test.psm1
+#Test-ModuleFunc -Thing "Hello world"
+
 
 if (!$(Get-NetFirewallRule -DisplayName "rs1in" 2>$null)) {
 	New-NetFirewallRule -DisplayName "rs1in" -Direction Inbound -LocalPort 1337 -Protocol TCP -Action Allow
@@ -11,32 +14,49 @@ if (!$(Get-NetFirewallRule -DisplayName "rs1out" 2>$null)) {
 	Write-Output "Rule already exists";
 }
 
+
+
+
+$enc = [system.Text.Encoding]::UTF8
+# Set up endpoint and start listening	
+$endpoint = new-object System.Net.IPEndPoint([ipaddress]::any, 1337) 
+$server = new-object System.Net.Sockets.TcpListener $endpoint
+$exit = 0
+[System.Net.Sockets.TcpClient[]]$ClientsTaskArr;
+
+
+
 Try { 	
-	$enc = [system.Text.Encoding]::UTF8
-	# Set up endpoint and start listening	
-	$endpoint = new-object System.Net.IPEndPoint([ipaddress]::any, 1337) 
-	$server = new-object System.Net.Sockets.TcpListener $endpoint
 	Write-Output "Booting server...";
-	$server.Start();
-	
-	# Wait for an incoming connection 
-	Write-Output "Waiting for client...";
-	$client = $server.AcceptTcpClient() 
-	Write-Output "Client Connected...";
-	# Stream setup
-	$stream = $client.GetStream() 
-	$writer = New-Object System.IO.StreamWriter($stream)
-	$out_str = "HELLO BACK HACKS!";
-	$out_bytes = $enc.GetBytes($out_str);
-	$writer.WriteLine($out_str);
-	$writer.Flush();
- 
-	# Close TCP connection and stop listening
-	$stream.Dispose();
-	#$client.Close();
-	$server.Stop();
-	
+	$server.Start();		
 }
 Catch {
-	Write-Output "Receive Message failed with: `n" + $Error[0];
+	Write-Output $_;
+	return;
 }
+
+
+Write-Output "Waiting for client...";
+#Listen for Client connections in a loop
+while ($exit -eq 0) {
+	if ($server.Pending()){
+		$client = $server.AcceptTcpClient() 
+		Write-Output $client;
+	}
+	Write-Output "Tick";
+	Start-Sleep -Seconds 1.5
+}
+
+Write-Output "Client Connected...";
+# Stream setup
+$stream = $client.GetStream() 
+$writer = New-Object System.IO.StreamWriter($stream)
+$out_str = "HELLO BACK HACKS!";
+$out_bytes = $enc.GetBytes($out_str);
+$writer.WriteLine($out_str);
+$writer.Flush();
+
+# Close TCP connection and stop listening
+$stream.Dispose();
+#$client.Close();
+$server.Stop();
