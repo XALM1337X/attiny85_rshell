@@ -13,16 +13,21 @@ if (!$(Get-NetFirewallRule -DisplayName "rs1out" 2>$null)) {
 } else {
 	Write-Output "Rule already exists";
 }
+$data = $null;
+$Runspace = [runspacefactory]::CreateRunspace()
 
+$PowerShell = [powershell]::Create()
 
+$PowerShell.runspace = $Runspace
 
+$Runspace.Open()
 
 $enc = [system.Text.Encoding]::UTF8
 # Set up endpoint and start listening	
 $endpoint = new-object System.Net.IPEndPoint([ipaddress]::any, 1337) 
 $server = new-object System.Net.Sockets.TcpListener $endpoint
 $exit = 0
-[System.Net.Sockets.TcpClient[]]$ClientsTaskArr;
+[System.Net.Sockets.TcpClient[]]$ClientsTaskArr = $null;
 
 
 
@@ -35,28 +40,72 @@ Catch {
 	return;
 }
 
-
-Write-Output "Waiting for client...";
-#Listen for Client connections in a loop
-while ($exit -eq 0) {
-	if ($server.Pending()){
-		$client = $server.AcceptTcpClient() 
-		Write-Output $client;
+[void]$PowerShell.AddScript({
+	param($server)
+	$thread_exit = 0;
+	
+	while($thread_exit -eq 0) {
+		if ($server.Pending()){
+			$client = $server.AcceptTcpClient() 
+			[pscustomobject]@{
+				Client = $client;
+			}
+			$thread_exit = 1;
+		}
 	}
-	Write-Output "Tick";
-	Start-Sleep -Seconds 1.5
+	
+
+}).AddArgument($server)
+$Object = New-Object System.Management.Automation.PSDataCollection[psobject]
+Write-Output "Waiting for client...";
+$AsyncObject = $PowerShell.BeginInvoke($Object,$Object)
+
+#Listen for Client connections in a loop
+while ($exit -eq 0) {	
+	if ($AsyncObject.IsCompleted -eq $true) {		
+		$ClientsTaskArr += $Object.Client;
+		$PowerShell.Dispose();
+		$Object = $null;
+		$Object = New-Object System.Management.Automation.PSDataCollection[psobject]
+		$Runspace = [runspacefactory]::CreateRunspace()
+		$PowerShell = [powershell]::Create()
+		$PowerShell.runspace = $Runspace
+		$Runspace.Open()
+		[void]$PowerShell.AddScript({
+			param($server)
+			$thread_exit = 0;
+			
+			while($thread_exit -eq 0) {
+				if ($server.Pending()){
+					$client = $server.AcceptTcpClient() 
+					[pscustomobject]@{
+						Client = $client;
+					}
+					$thread_exit = 1;
+				}
+			}
+			
+
+		}).AddArgument($server)
+		$AsyncObject = $PowerShell.BeginInvoke($Object,$Object)
+		#Write-Output $AsyncObject;
+		#$exit = 1;
+	} else {
+		Read-Host "Type:";
+		$ClientsTaskArr.Length;
+	}	
 }
 
 Write-Output "Client Connected...";
 # Stream setup
-$stream = $client.GetStream() 
-$writer = New-Object System.IO.StreamWriter($stream)
-$out_str = "HELLO BACK HACKS!";
-$out_bytes = $enc.GetBytes($out_str);
-$writer.WriteLine($out_str);
-$writer.Flush();
+#$stream = $client.GetStream() 
+#$writer = New-Object System.IO.StreamWriter($stream)
+#$out_str = "HELLO BACK HACKS!";
+#$out_bytes = $enc.GetBytes($out_str);
+#$writer.WriteLine($out_str);
+#$writer.Flush();
 
 # Close TCP connection and stop listening
-$stream.Dispose();
+#$stream.Dispose();
 #$client.Close();
 $server.Stop();
